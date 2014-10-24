@@ -80,7 +80,7 @@ if [ -f "$LIBCRYPTOSO" -a -z "$preload_var" ]; then
 	# it into a script makes it possible to do so on multi-ABI
 	# platforms.
 	case "$SYSNAME" in
-	*BSD)	LD_PRELOAD="$LIBCRYPTOSO:$LIBSSLSO" ;;	# *BSD
+	*BSD|QNX)	LD_PRELOAD="$LIBCRYPTOSO:$LIBSSLSO" ;;	# *BSD, QNX
 	*)	LD_PRELOAD="$LIBCRYPTOSO $LIBSSLSO" ;;	# SunOS, Linux, ELF HP-UX
 	esac
 	_RLD_LIST="$LIBCRYPTOSO:$LIBSSLSO:DEFAULT"	# Tru64, o32 IRIX
@@ -88,4 +88,6 @@ if [ -f "$LIBCRYPTOSO" -a -z "$preload_var" ]; then
 	export LD_PRELOAD _RLD_LIST DYLD_INSERT_LIBRARIES
 fi
 
-exec "$@"
+PROG=$(echo "$1" | sed 's|.*/||' )
+shift
+exec "${TARGET_BUILD_DIR}/${PROG}" "$@"

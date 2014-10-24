@@ -89,9 +89,6 @@ int MAIN(int, char **);
 int MAIN(int argc, char **argv)
 	{
 	BN_GENCB cb;
-#ifndef OPENSSL_NO_ENGINE
-	ENGINE *e = NULL;
-#endif
 	int ret=1;
 	int i,num=DEFBITS;
 	long l;
@@ -106,9 +103,9 @@ int MAIN(int argc, char **argv)
 	char *inrand=NULL;
 	BIO *out=NULL;
 	BIGNUM *bn = BN_new();
-	RSA *rsa = RSA_new();
+	RSA *rsa = NULL;
 
-	if(!bn || !rsa) goto err;
+	if(!bn) goto err;
 
 	apps_startup();
 	BN_GENCB_set(&cb, genrsa_cb, bio_err);
@@ -159,10 +156,6 @@ int MAIN(int argc, char **argv)
 		else if (strcmp(*argv,"-des3") == 0)
 			enc=EVP_des_ede3_cbc();
 #endif
-#ifndef OPENSSL_NO_IDEA
-		else if (strcmp(*argv,"-idea") == 0)
-			enc=EVP_idea_cbc();
-#endif
 #ifndef OPENSSL_NO_SEED
 		else if (strcmp(*argv,"-seed") == 0)
 			enc=EVP_seed_cbc();
@@ -199,9 +192,6 @@ bad:
 		BIO_printf(bio_err,"usage: genrsa [args] [numbits]\n");
 		BIO_printf(bio_err," -des            encrypt the generated key with DES in cbc mode\n");
 		BIO_printf(bio_err," -des3           encrypt the generated key with DES in ede cbc mode (168 bit key)\n");
-#ifndef OPENSSL_NO_IDEA
-		BIO_printf(bio_err," -idea           encrypt the generated key with IDEA in cbc mode\n");
-#endif
 #ifndef OPENSSL_NO_SEED
 		BIO_printf(bio_err," -seed\n");
 		BIO_printf(bio_err,"                 encrypt PEM output with cbc seed\n");
@@ -235,7 +225,7 @@ bad:
 	}
 
 #ifndef OPENSSL_NO_ENGINE
-        e = setup_engine(bio_err, engine, 0);
+        setup_engine(bio_err, engine, 0);
 #endif
 
 	if (outfile == NULL)
@@ -268,6 +258,10 @@ bad:
 
 	BIO_printf(bio_err,"Generating RSA private key, %d bit long modulus\n",
 		num);
+
+	rsa = RSA_new();
+	if (!rsa)
+		goto err;
 
 	if (use_x931)
 		{

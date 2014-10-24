@@ -195,9 +195,6 @@ static const SSL_CIPHER cipher_aliases[]={
 	{0,SSL_TXT_3DES,0,SSL_3DES,  0,0,0,0,SSL_ENC_MASK,0},
 	{0,SSL_TXT_RC4,	0,SSL_RC4,   0,0,0,0,SSL_ENC_MASK,0},
 	{0,SSL_TXT_RC2,	0,SSL_RC2,   0,0,0,0,SSL_ENC_MASK,0},
-#ifndef OPENSSL_NO_IDEA
-	{0,SSL_TXT_IDEA,0,SSL_IDEA,  0,0,0,0,SSL_ENC_MASK,0},
-#endif
 	{0,SSL_TXT_SEED,0,SSL_SEED,  0,0,0,0,SSL_ENC_MASK,0},
 	{0,SSL_TXT_eNULL,0,SSL_eNULL,0,0,0,0,SSL_ENC_MASK,0},
 	{0,SSL_TXT_eFZA,0,SSL_eFZA,  0,0,0,0,SSL_ENC_MASK,0},
@@ -238,12 +235,7 @@ void ssl_load_ciphers(void)
 		EVP_get_cipherbyname(SN_rc4);
 	ssl_cipher_methods[SSL_ENC_RC2_IDX]= 
 		EVP_get_cipherbyname(SN_rc2_cbc);
-#ifndef OPENSSL_NO_IDEA
-	ssl_cipher_methods[SSL_ENC_IDEA_IDX]= 
-		EVP_get_cipherbyname(SN_idea_cbc);
-#else
 	ssl_cipher_methods[SSL_ENC_IDEA_IDX]= NULL;
-#endif
 	ssl_cipher_methods[SSL_ENC_AES128_IDX]=
 	  EVP_get_cipherbyname(SN_aes_128_cbc);
 	ssl_cipher_methods[SSL_ENC_AES256_IDX]=
@@ -287,23 +279,6 @@ static void load_builtin_compressions(void)
 
 			MemCheck_off();
 			ssl_comp_methods=sk_SSL_COMP_new(sk_comp_cmp);
-			if (ssl_comp_methods != NULL)
-				{
-				comp=(SSL_COMP *)OPENSSL_malloc(sizeof(SSL_COMP));
-				if (comp != NULL)
-					{
-					comp->method=COMP_zlib();
-					if (comp->method
-						&& comp->method->type == NID_undef)
-						OPENSSL_free(comp);
-					else
-						{
-						comp->id=SSL_COMP_ZLIB_IDX;
-						comp->name=comp->method->name;
-						sk_SSL_COMP_push(ssl_comp_methods,comp);
-						}
-					}
-				}
 			MemCheck_on();
 			}
 		}
@@ -777,7 +752,7 @@ static int ssl_cipher_process_rulestr(const char *rule_str,
 		CIPHER_ORDER **tail_p, SSL_CIPHER **ca_list)
 	{
 	unsigned long algorithms, mask, algo_strength, mask_strength;
-	const char *l, *start, *buf;
+	const char *l, *buf;
 	int j, multi, found, rule, retval, ok, buflen;
 	unsigned long cipher_id = 0, ssl_version = 0;
 	char ch;
@@ -809,7 +784,6 @@ static int ssl_cipher_process_rulestr(const char *rule_str,
 
 		algorithms = mask = algo_strength = mask_strength = 0;
 
-		start=l;
 		for (;;)
 			{
 			ch = *l;
@@ -1091,15 +1065,16 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(const SSL_METHOD *ssl_method,
 	*cipher_list_by_id = tmp_cipher_list;
 	(void)sk_SSL_CIPHER_set_cmp_func(*cipher_list_by_id,ssl_cipher_ptr_id_cmp);
 
+	sk_SSL_CIPHER_sort(*cipher_list_by_id);
 	return(cipherstack);
 	}
 
-char *SSL_CIPHER_description(SSL_CIPHER *cipher, char *buf, int len)
+char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
 	{
 	int is_export,pkl,kl;
 	const char *ver,*exp_str;
 	const char *kx,*au,*enc,*mac;
-	unsigned long alg,alg2,alg_s;
+	unsigned long alg,alg2;
 #ifdef KSSL_DEBUG
 	static const char *format="%-23s %s Kx=%-8s Au=%-4s Enc=%-9s Mac=%-4s%s AL=%lx\n";
 #else
@@ -1107,7 +1082,6 @@ char *SSL_CIPHER_description(SSL_CIPHER *cipher, char *buf, int len)
 #endif /* KSSL_DEBUG */
 
 	alg=cipher->algorithms;
-	alg_s=cipher->algo_strength;
 	alg2=cipher->algorithm2;
 
 	is_export=SSL_C_IS_EXPORT(cipher);

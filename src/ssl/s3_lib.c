@@ -218,20 +218,6 @@ OPENSSL_GLOBAL SSL_CIPHER ssl3_ciphers[]={
 	SSL_ALL_STRENGTHS,
 	},
 /* Cipher 07 */
-#ifndef OPENSSL_NO_IDEA
-	{
-	1,
-	SSL3_TXT_RSA_IDEA_128_SHA,
-	SSL3_CK_RSA_IDEA_128_SHA,
-	SSL_kRSA|SSL_aRSA|SSL_IDEA |SSL_SHA1|SSL_SSLV3,
-	SSL_NOT_EXP|SSL_MEDIUM,
-	0,
-	128,
-	128,
-	SSL_ALL_CIPHERS,
-	SSL_ALL_STRENGTHS,
-	},
-#endif
 /* Cipher 08 */
 	{
 	1,
@@ -1722,12 +1708,23 @@ void ssl3_clear(SSL *s)
 		}
 #ifndef OPENSSL_NO_DH
 	if (s->s3->tmp.dh != NULL)
+		{
 		DH_free(s->s3->tmp.dh);
+		s->s3->tmp.dh = NULL;
+		}
 #endif
 #ifndef OPENSSL_NO_ECDH
 	if (s->s3->tmp.ecdh != NULL)
+		{
 		EC_KEY_free(s->s3->tmp.ecdh);
+		s->s3->tmp.ecdh = NULL;
+		}
 #endif
+#ifndef OPENSSL_NO_TLSEXT
+#ifndef OPENSSL_NO_EC
+	s->s3->is_probably_safari = 0;
+#endif /* !OPENSSL_NO_EC */
+#endif /* !OPENSSL_NO_TLSEXT */
 
 	rp = s->s3->rbuf.buf;
 	wp = s->s3->wbuf.buf;
@@ -2392,6 +2389,13 @@ SSL_CIPHER *ssl3_choose_cipher(SSL *s, STACK_OF(SSL_CIPHER) *clnt,
 		j=sk_SSL_CIPHER_find(allow,c);
 		if (j >= 0)
 			{
+#if !defined(OPENSSL_NO_EC) && !defined(OPENSSL_NO_TLSEXT)
+			if ((alg & SSL_kECDHE) && (alg & SSL_aECDSA) && s->s3->is_probably_safari)
+				{
+				if (!ret) ret=sk_SSL_CIPHER_value(allow,j);
+				continue;
+				}
+#endif
 			ret=sk_SSL_CIPHER_value(allow,j);
 			break;
 			}
@@ -2458,6 +2462,7 @@ int ssl3_get_req_cert_type(SSL *s, unsigned char *p)
 
 int ssl3_shutdown(SSL *s)
 	{
+	int ret;
 
 	/* Don't do anything much if we have not done the handshake or
 	 * we don't want to send messages :-) */
@@ -2475,18 +2480,32 @@ int ssl3_shutdown(SSL *s)
 #endif
 		/* our shutdown alert has been sent now, and if it still needs
 	 	 * to be written, s->s3->alert_dispatch will be true */
+	 	if (s->s3->alert_dispatch)
+	 		return(-1);	/* return WANT_WRITE */
 		}
 	else if (s->s3->alert_dispatch)
 		{
 		/* resend it if not sent */
 #if 1
-		s->method->ssl_dispatch_alert(s);
+		ret=s->method->ssl_dispatch_alert(s);
+		if(ret == -1)
+			{
+			/* we only get to return -1 here the 2nd/Nth
+			 * invocation, we must  have already signalled
+			 * return 0 upon a previous invoation,
+			 * return WANT_WRITE */
+			return(ret);
+			}
 #endif
 		}
 	else if (!(s->shutdown & SSL_RECEIVED_SHUTDOWN))
 		{
 		/* If we are waiting for a close from our peer, we are closed */
 		s->method->ssl_read_bytes(s,0,NULL,0,0);
+		if(!(s->shutdown & SSL_RECEIVED_SHUTDOWN))
+			{
+			return(-1);	/* return WANT_READ */
+			}
 		}
 
 	if ((s->shutdown == (SSL_SENT_SHUTDOWN|SSL_RECEIVED_SHUTDOWN)) &&
@@ -2592,9 +2611,6 @@ int ssl3_renegotiate(SSL *s)
 	if (s->s3->flags & SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
 		return(0);
 
-	if (!(s->s3->flags & SSL3_FLAGS_ALLOW_UNSAFE_LEGACY_RENEGOTIATION))
-		return(0);
-
 	s->s3->renegotiate=1;
 	return(1);
 	}
@@ -2623,4 +2639,3 @@ need to go to SSL_ST_ACCEPT.
 		}
 	return(ret);
 	}
-

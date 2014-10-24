@@ -27,6 +27,10 @@ $rm='del /Q';
 
 $zlib_lib="zlib1.lib";
 
+# Santize -L options for ms link
+$l_flags =~ s/-L("\[^"]+")/\/libpath:$1/g;
+$l_flags =~ s/-L(\S+)/\/libpath:$1/g;
+
 # C compiler stuff
 $cc='cl';
 if ($FLAVOR =~ /WIN64/)
@@ -45,7 +49,8 @@ if ($FLAVOR =~ /WIN64/)
     $base_cflags=' /W3 /Gs0 /GF /Gy /nologo -DWIN32_LEAN_AND_MEAN -DL_ENDIAN -DDSO_WIN32 -DOPENSSL_SYSNAME_WIN32 -DOPENSSL_SYSNAME_WINNT -DUNICODE -D_UNICODE';
     $base_cflags.=' -D_CRT_SECURE_NO_DEPRECATE';	# shut up VC8
     $base_cflags.=' -D_CRT_NONSTDC_NO_DEPRECATE';	# shut up VC8
-    my $f = $shlib?' /MD':' /MT';
+    # For reasons lost to time ("svn log -r13897 svn+ssh://svn.apple.com/svn/syncservices") we always link against the static lib version of MSVCR "to avoid deployment issues"
+    my $f = ' /MT';
     $lib_cflag='/Zl' if (!$shlib);	# remove /DEFAULTLIBs from static lib
     $opt_cflags=$f.' /Ox';
     $dbg_cflags=$f.'d /Od -DDEBUG -D_DEBUG';
@@ -110,7 +115,8 @@ else	# Win32
     $base_cflags=' /W3 /WX /Gs0 /GF /Gy /nologo -DOPENSSL_SYSNAME_WIN32 -DWIN32_LEAN_AND_MEAN -DL_ENDIAN -DDSO_WIN32';
     $base_cflags.=' -D_CRT_SECURE_NO_DEPRECATE';	# shut up VC8
     $base_cflags.=' -D_CRT_NONSTDC_NO_DEPRECATE';	# shut up VC8
-    my $f = $shlib || $fips ?' /MD':' /MT';
+    # For reasons lost to time ("svn log -r13897 svn+ssh://svn.apple.com/svn/syncservices") we always link against the static lib version of MSVCR "to avoid deployment issues"
+    my $f = ' /MT';
     $lib_cflag='/Zl' if (!$shlib);	# remove /DEFAULTLIBs from static lib
     $opt_cflags=$f.' /Ox /O2 /Ob2';
     $dbg_cflags=$f.'d /Od -DDEBUG -D_DEBUG';
@@ -124,7 +130,7 @@ $inc_def="inc32";
 
 if ($debug)
 	{
-	$cflags=$dbg_cflags.$base_cflags;
+	$cflags=$dbg_cflags.$base_cflags.' /Zi';
 	$lflags.=" /debug";
 	$mlflags.=' /debug';
 	}
@@ -145,6 +151,18 @@ if ($no_sock)		{ $ex_libs=''; }
 elsif ($FLAVOR =~ /CE/)	{ $ex_libs='winsock.lib'; }
 else			{ $ex_libs='wsock32.lib'; }
 
+my $oflow;
+
+
+if ($FLAVOR =~ /WIN64/ and `cl 2>&1` =~ /14\.00\.4[0-9]{4}\./)
+	{
+	$oflow=' bufferoverflowu.lib';
+	}
+else
+	{
+	$oflow="";
+	}
+
 if ($FLAVOR =~ /CE/)
 	{
 	$ex_libs.=' $(WCECOMPAT)/lib/wcecompatex.lib';
@@ -153,7 +171,8 @@ if ($FLAVOR =~ /CE/)
 else
 	{
 	$ex_libs.=' gdi32.lib crypt32.lib advapi32.lib user32.lib';
-	$ex_libs.=' bufferoverflowu.lib' if ($FLAVOR =~ /WIN64/);
+	$ex_libs.= $oflow;
+
 	}
 
 # As native NT API is pure UNICODE, our WIN-NT build defaults to UNICODE,
@@ -281,7 +300,7 @@ elsif ($shlib && $FLAVOR =~ /CE/)
 	$tmp_def='tmp32dll_$(TARGETCPU)';
 	}
 
-$cflags.=" /Fd$out_def";
+$cflags.=' /Fd$(PDB_PATH)';      # <rdar://problem/7370791> allow PDB path to be modified externally
 
 sub do_lib_rule
 	{
@@ -320,7 +339,7 @@ sub do_lib_rule
 	else
 		{
 		my $ex = "";		
-		if ($target =~ /O_SSL/)
+		if ($target !~ /O_CRYPTO/)
 			{
 			$ex .= " \$(L_CRYPTO)";
 			#$ex .= " \$(L_FIPS)" if $fipsdso;
@@ -338,7 +357,7 @@ sub do_lib_rule
 
 		if ($name eq "")
 			{
-			$ex.=' bufferoverflowu.lib' if ($FLAVOR =~ /WIN64/);
+			$ex.= $oflow;
 			if ($target =~ /capi/)
 				{
 				$ex.=' crypt32.lib advapi32.lib';
@@ -353,7 +372,7 @@ sub do_lib_rule
 			$ex.=' unicows.lib' if ($FLAVOR =~ /NT/);
 			$ex.=' wsock32.lib gdi32.lib advapi32.lib user32.lib';
 			$ex.=' crypt32.lib';
-			$ex.=' bufferoverflowu.lib' if ($FLAVOR =~ /WIN64/);
+			$ex.= $oflow;
 			}
 		$ex.=" $zlib_lib" if $zlib_opt == 1 && $target =~ /O_CRYPTO/;
 
@@ -374,7 +393,7 @@ sub do_lib_rule
 			$ret.="\tSET FIPS_SHA1_EXE=\$(FIPS_SHA1_EXE)\n";
 			$ret.="\tSET FIPS_TARGET=$target\n";
 			$ret.="\tSET FIPSLIB_D=\$(FIPSLIB_D)\n";
-			$ret.="\t\$(FIPSLINK) \$(MLFLAGS) /map $base_arg $efile$target ";
+			$ret.="\t\$(FIPSLINK) \$(MLFLAGS) /fixed /map $base_arg $efile$target ";
 			$ret.="$name @<<\n  \$(SHLIB_EX_OBJ) $objs ";
 			$ret.="\$(OBJ_D)${o}fips_premain.obj $ex\n<<\n";
 			}
@@ -417,7 +436,7 @@ sub do_link_rule
 		$ret.="\tSET FIPS_TARGET=$target\n";
 		$ret.="\tSET FIPS_SHA1_EXE=\$(FIPS_SHA1_EXE)\n";
 		$ret.="\tSET FIPSLIB_D=\$(FIPSLIB_D)\n";
-		$ret.="\t\$(FIPSLINK) \$(LFLAGS) /map $efile$target @<<\n";
+		$ret.="\t\$(FIPSLINK) \$(LFLAGS) /fixed /map $efile$target @<<\n";
 		$ret.="\t\$(APP_EX_OBJ) $files \$(OBJ_D)${o}fips_premain.obj $libs\n<<\n";
 		}
 	else

@@ -68,6 +68,12 @@
 #include <openssl/pem.h>
 #include <openssl/pkcs12.h>
 
+#ifdef OPENSSL_SYS_NETWARE
+/* Rename these functions to avoid name clashes on NetWare OS */
+#define uni2asc OPENSSL_uni2asc
+#define asc2uni OPENSSL_asc2uni
+#endif
+
 #define PROG pkcs12_main
 
 const EVP_CIPHER *enc;
@@ -162,9 +168,6 @@ int MAIN(int argc, char **argv)
 		else if (!strcmp (*args, "-export")) export_cert = 1;
 		else if (!strcmp (*args, "-des")) enc=EVP_des_cbc();
 		else if (!strcmp (*args, "-des3")) enc = EVP_des_ede3_cbc();
-#ifndef OPENSSL_NO_IDEA
-		else if (!strcmp (*args, "-idea")) enc=EVP_idea_cbc();
-#endif
 #ifndef OPENSSL_NO_SEED
 		else if (!strcmp(*args, "-seed")) enc=EVP_seed_cbc();
 #endif
@@ -316,9 +319,6 @@ int MAIN(int argc, char **argv)
 	BIO_printf (bio_err, "-info         give info about PKCS#12 structure.\n");
 	BIO_printf (bio_err, "-des          encrypt private keys with DES\n");
 	BIO_printf (bio_err, "-des3         encrypt private keys with triple DES (default)\n");
-#ifndef OPENSSL_NO_IDEA
-	BIO_printf (bio_err, "-idea         encrypt private keys with idea\n");
-#endif
 #ifndef OPENSSL_NO_SEED
 	BIO_printf (bio_err, "-seed         encrypt private keys with seed\n");
 #endif
@@ -653,7 +653,7 @@ int MAIN(int argc, char **argv)
 
     if (!twopass) BUF_strlcpy(macpass, pass, sizeof macpass);
 
-    if (options & INFO) BIO_printf (bio_err, "MAC Iteration %ld\n", p12->mac->iter ? ASN1_INTEGER_get (p12->mac->iter) : 1);
+    if ((options & INFO) && p12->mac) BIO_printf (bio_err, "MAC Iteration %ld\n", p12->mac->iter ? ASN1_INTEGER_get (p12->mac->iter) : 1);
     if(macver) {
 #ifdef CRYPTO_MDEBUG
     CRYPTO_push_info("verify MAC");

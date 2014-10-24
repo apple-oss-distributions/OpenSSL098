@@ -1433,11 +1433,17 @@ start2:			for (;;)
 
 				BIO_snprintf(buf,sizeof buf,"%s_min",type);
 				if (!NCONF_get_number(req_conf,attr_sect,buf, &n_min))
+					{
+					ERR_clear_error();
 					n_min = -1;
+					}
 
 				BIO_snprintf(buf,sizeof buf,"%s_max",type);
 				if (!NCONF_get_number(req_conf,attr_sect,buf, &n_max))
+					{
+					ERR_clear_error();
 					n_max = -1;
+					}
 
 				if (!add_attribute_object(req,
 					v->value,def,value,nid,n_min,n_max, chtype))
@@ -1538,7 +1544,8 @@ start:
 		buf[0]='\0';
 		if (!batch)
 			{
-			fgets(buf,sizeof buf,stdin);
+			if (!fgets(buf,sizeof buf,stdin))
+				return 0;
 			}
 		else
 			{
@@ -1567,7 +1574,13 @@ start:
 #ifdef CHARSET_EBCDIC
 	ebcdic2ascii(buf, buf, i);
 #endif
-	if(!req_check_len(i, n_min, n_max)) goto start;
+	if(!req_check_len(i, n_min, n_max))
+		{
+		if (batch || value)
+			return 0;
+		goto start;
+		}
+
 	if (!X509_NAME_add_entry_by_NID(n,nid, chtype,
 				(unsigned char *) buf, -1,-1,mval)) goto err;
 	ret=1;
@@ -1596,7 +1609,8 @@ start:
 		buf[0]='\0';
 		if (!batch)
 			{
-			fgets(buf,sizeof buf,stdin);
+			if (!fgets(buf,sizeof buf,stdin))
+				return 0;
 			}
 		else
 			{
@@ -1625,7 +1639,12 @@ start:
 #ifdef CHARSET_EBCDIC
 	ebcdic2ascii(buf, buf, i);
 #endif
-	if(!req_check_len(i, n_min, n_max)) goto start;
+	if(!req_check_len(i, n_min, n_max))
+		{
+		if (batch || value)
+			return 0;
+		goto start;
+		}
 
 	if(!X509_REQ_add1_attr_by_NID(req, nid, chtype,
 					(unsigned char *)buf, -1)) {

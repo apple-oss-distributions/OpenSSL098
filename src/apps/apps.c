@@ -351,13 +351,12 @@ void program_name(char *in, char *out, int size)
 
 int chopup_args(ARGS *arg, char *buf, int *argc, char **argv[])
 	{
-	int num,len,i;
+	int num,i;
 	char *p;
 
 	*argc=0;
 	*argv=NULL;
 
-	len=strlen(buf);
 	i=0;
 	if (arg->count == 0)
 		{
@@ -559,12 +558,12 @@ int password_callback(char *buf, int bufsiz, int verify,
 
 		if (ok >= 0)
 			ok = UI_add_input_string(ui,prompt,ui_flags,buf,
-				PW_MIN_LENGTH,BUFSIZ-1);
+				PW_MIN_LENGTH,bufsiz-1);
 		if (ok >= 0 && verify)
 			{
 			buff = (char *)OPENSSL_malloc(bufsiz);
 			ok = UI_add_verify_string(ui,prompt,ui_flags,buff,
-				PW_MIN_LENGTH,BUFSIZ-1, buf);
+				PW_MIN_LENGTH,bufsiz-1, buf);
 			}
 		if (ok >= 0)
 			do
@@ -866,10 +865,17 @@ EVP_PKEY *load_key(BIO *err, const char *file, int format, int maybe_stdin,
 	if (format == FORMAT_ENGINE)
 		{
 		if (!e)
-			BIO_printf(bio_err,"no engine specified\n");
+			BIO_printf(err,"no engine specified\n");
 		else
+			{
 			pkey = ENGINE_load_private_key(e, file,
 				ui_method, &cb_data);
+			if (!pkey) 
+				{
+				BIO_printf(err,"cannot load %s from engine\n",key_descrip);
+				ERR_print_errors(err);
+				}	
+			}
 		goto end;
 		}
 #endif
@@ -919,8 +925,11 @@ EVP_PKEY *load_key(BIO *err, const char *file, int format, int maybe_stdin,
 		}
  end:
 	if (key != NULL) BIO_free(key);
-	if (pkey == NULL)
+	if (pkey == NULL) 
+		{
 		BIO_printf(err,"unable to load %s\n", key_descrip);
+		ERR_print_errors(err);
+		}	
 	return(pkey);
 	}
 
@@ -2043,7 +2052,7 @@ X509_NAME *parse_name(char *subject, long chtype, int multirdn)
 	X509_NAME *n = NULL;
 	int nid;
 
-	if (!buf || !ne_types || !ne_values)
+	if (!buf || !ne_types || !ne_values || !mval)
 		{
 		BIO_printf(bio_err, "malloc error\n");
 		goto error;
@@ -2147,6 +2156,7 @@ X509_NAME *parse_name(char *subject, long chtype, int multirdn)
 	OPENSSL_free(ne_values);
 	OPENSSL_free(ne_types);
 	OPENSSL_free(buf);
+	OPENSSL_free(mval);
 	return n;
 
 error:
@@ -2155,6 +2165,8 @@ error:
 		OPENSSL_free(ne_values);
 	if (ne_types)
 		OPENSSL_free(ne_types);
+	if (mval)
+		OPENSSL_free(mval);
 	if (buf)
 		OPENSSL_free(buf);
 	return NULL;
@@ -2261,6 +2273,8 @@ int args_verify(char ***pargs, int *pargc,
 		flags |= X509_V_FLAG_X509_STRICT;
 	else if (!strcmp(arg, "-policy_print"))
 		flags |= X509_V_FLAG_NOTIFY_POLICY;
+	else if (!strcmp(arg, "-check_ss_sig"))
+		flags |= X509_V_FLAG_CHECK_SS_SIGNATURE;
 	else
 		return 0;
 

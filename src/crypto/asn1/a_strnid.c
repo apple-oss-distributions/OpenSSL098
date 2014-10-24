@@ -75,7 +75,7 @@ static int table_cmp(const void *a, const void *b);
  * certain software (e.g. Netscape) has problems with them.
  */
 
-static unsigned long global_mask = 0xFFFFFFFFL;
+static unsigned long global_mask = B_ASN1_UTF8STRING;
 
 void ASN1_STRING_set_default_mask(unsigned long mask)
 {
@@ -96,7 +96,7 @@ unsigned long ASN1_STRING_get_default_mask(void)
  * default:   the default value, Printable, T61, BMP.
  */
 
-int ASN1_STRING_set_default_mask_asc(char *p)
+int ASN1_STRING_set_default_mask_asc(const char *p)
 {
 	unsigned long mask;
 	char *end;

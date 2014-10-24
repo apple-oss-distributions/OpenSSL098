@@ -129,6 +129,9 @@
 extern "C" {
 #endif
 
+/* Signalling cipher suite value: from draft-ietf-tls-renegotiation-03.txt */
+#define SSL3_CK_SCSV				0x030000FF
+
 #define SSL3_CK_RSA_NULL_MD5			0x03000001
 #define SSL3_CK_RSA_NULL_SHA			0x03000002
 #define SSL3_CK_RSA_RC4_40_MD5 			0x03000003
@@ -326,11 +329,22 @@ typedef struct ssl3_buffer_st
 #define SSL3_CT_NUMBER			7
 
 
-#define SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS		0x0001
-#define SSL3_FLAGS_DELAY_CLIENT_FINISHED		0x0002
-#define SSL3_FLAGS_POP_BUFFER				0x0004
-#define TLS1_FLAGS_TLS_PADDING_BUG			0x0008
-#define SSL3_FLAGS_ALLOW_UNSAFE_LEGACY_RENEGOTIATION	0x0010
+#define SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS	0x0001
+#define SSL3_FLAGS_DELAY_CLIENT_FINISHED	0x0002
+#define SSL3_FLAGS_POP_BUFFER			0x0004
+#define TLS1_FLAGS_TLS_PADDING_BUG		0x0008
+#define SSL3_FLAGS_CCS_OK			0x0080
+ 
+/* SSL3_FLAGS_SGC_RESTART_DONE is set when we
+ * restart a handshake because of MS SGC and so prevents us
+ * from restarting the handshake in a loop. It's reset on a
+ * renegotiation, so effectively limits the client to one restart
+ * per negotiation. This limits the possibility of a DDoS
+ * attack where the client handshakes in a loop using SGC to
+ * restart. Servers which permit renegotiation can still be
+ * effected, but we can't prevent that.
+ */
+#define SSL3_FLAGS_SGC_RESTART_DONE		0x0040
 
 typedef struct ssl3_state_st
 	{
@@ -441,6 +455,21 @@ typedef struct ssl3_state_st
 		int cert_request;
 		} tmp;
 
+        /* Connection binding to prevent renegotiation attacks */
+        unsigned char previous_client_finished[EVP_MAX_MD_SIZE];
+        unsigned char previous_client_finished_len;
+        unsigned char previous_server_finished[EVP_MAX_MD_SIZE];
+        unsigned char previous_server_finished_len;
+        int send_connection_binding; /* TODOEKR */
+
+#ifndef OPENSSL_NO_TLSEXT
+#ifndef OPENSSL_NO_EC
+	/* This is set to true if we believe that this is a version of Safari
+	 * running on OS X 10.6 or newer. We wish to know this because Safari
+	 * on 10.8 .. 10.8.3 has broken ECDHE-ECDSA support. */
+	char is_probably_safari;
+#endif /* !OPENSSL_NO_EC */
+#endif /* !OPENSSL_NO_TLSEXT */
 	} SSL3_STATE;
 
 
