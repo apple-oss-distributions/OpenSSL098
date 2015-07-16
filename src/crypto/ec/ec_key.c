@@ -64,7 +64,6 @@
 #include <string.h>
 #include "ec_lcl.h"
 #include <openssl/err.h>
-#include <string.h>
 
 EC_KEY *EC_KEY_new(void)
 	{
@@ -317,7 +316,7 @@ int EC_KEY_check_key(const EC_KEY *eckey)
 		goto err;
 
 	/* testing whether the pub_key is on the elliptic curve */
-	if (!EC_POINT_is_on_curve(eckey->group, eckey->pub_key, ctx))
+	if (EC_POINT_is_on_curve(eckey->group, eckey->pub_key, ctx) <= 0)
 		{
 		ECerr(EC_F_EC_KEY_CHECK_KEY, EC_R_POINT_IS_NOT_ON_CURVE);
 		goto err;

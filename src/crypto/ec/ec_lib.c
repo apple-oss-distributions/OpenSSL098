@@ -1010,7 +1010,7 @@ int EC_POINT_dbl(const EC_GROUP *group, EC_POINT *r, const EC_POINT *a, BN_CTX *
 
 int EC_POINT_invert(const EC_GROUP *group, EC_POINT *a, BN_CTX *ctx)
 	{
-	if (group->meth->dbl == 0)
+	if (group->meth->invert == 0)
 		{
 		ECerr(EC_F_EC_POINT_INVERT, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
 		return 0;
@@ -1040,6 +1040,13 @@ int EC_POINT_is_at_infinity(const EC_GROUP *group, const EC_POINT *point)
 	}
 
 
+/*
+ * Check whether an EC_POINT is on the curve or not. Note that the return
+ * value for this function should NOT be treated as a boolean. Return values:
+ *  1: The point is on the curve
+ *  0: The point is not on the curve
+ * -1: An error occurred
+ */
 int EC_POINT_is_on_curve(const EC_GROUP *group, const EC_POINT *point, BN_CTX *ctx)
 	{
 	if (group->meth->is_on_curve == 0)

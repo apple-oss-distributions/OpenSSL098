@@ -10,7 +10,7 @@ $OPTIONS="";
 $ssl_version="";
 $banner="\t\@echo Building OpenSSL";
 
-if ($ENV{"DEBUG_BUILD"}) { $debug = 1; } # APPLE-SPECIFIC hack to force debug build
+if ($ENV{"DEBUG_BUILD"}) { $debug = 1; } # APPLE-SPECIFIC hack to force debug build                   
 
 my $no_static_engine = 0;
 my $engines = "";
@@ -788,12 +788,6 @@ foreach (values %lib_nam)
 	{
 	$lib_obj=$lib_obj{$_};
 	local($slib)=$shlib;
-
-	if (($_ eq "SSL") && $no_ssl2 && $no_ssl3)
-		{
-		$rules.="\$(O_SSL):\n\n"; 
-		next;
-		}
 
 	if ((!$fips && ($_ eq "CRYPTO")) || ($fips && ($_ eq "FIPS")))
 		{

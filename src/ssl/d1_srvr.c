@@ -371,23 +371,11 @@ int dtls1_accept(SSL *s)
 
 			/* clear this, it may get reset by
 			 * send_server_key_exchange */
-			if ((s->options & SSL_OP_EPHEMERAL_RSA)
-#ifndef OPENSSL_NO_KRB5
-				&& !(l & SSL_KRB5)
-#endif /* OPENSSL_NO_KRB5 */
-				)
-				/* option SSL_OP_EPHEMERAL_RSA sends temporary RSA key
-				 * even when forbidden by protocol specs
-				 * (handshake may fail as clients are not required to
-				 * be able to handle this) */
-				s->s3->tmp.use_rsa_tmp=1;
-			else
-				s->s3->tmp.use_rsa_tmp=0;
+			s->s3->tmp.use_rsa_tmp=0;
 
 			/* only send if a DH key exchange, fortezza or
 			 * RSA but we have a sign only certificate */
-			if (s->s3->tmp.use_rsa_tmp
-			    || (l & (SSL_DH|SSL_kFZA))
+			if ((l & (SSL_DH|SSL_kFZA))
 			    || ((l & SSL_kRSA)
 				&& (s->cert->pkeys[SSL_PKEY_RSA_ENC].privatekey == NULL
 				    || (SSL_C_IS_EXPORT(s->s3->tmp.new_cipher)
@@ -480,10 +468,11 @@ int dtls1_accept(SSL *s)
 				s->state = SSL3_ST_SR_CLNT_HELLO_C;
 				}
 			else {
-				/* could be sent for a DH cert, even if we
-				 * have not asked for it :-) */
-				ret=ssl3_get_client_certificate(s);
-				if (ret <= 0) goto end;
+				if (s->s3->tmp.cert_request)
+					{
+					ret=ssl3_get_client_certificate(s);
+					if (ret <= 0) goto end;
+					}
 				s->init_num=0;
 				s->state=SSL3_ST_SR_KEY_EXCH_A;
 			}
