@@ -385,11 +385,11 @@ static void ssl_check_for_safari(SSL *s, const unsigned char *data, const unsign
 		0x02, 0x03,  /* SHA-1/ECDSA */
 	};
 
-	if (data >= (d+n-2))
+	if ((d+n)-data <= 2)
 		return;
 	data += 2;
 
-	if (data > (d+n-4))
+	if ((d+n)-data < 4)
 		return;
 	n2s(data,type);
 	n2s(data,size);
@@ -397,7 +397,7 @@ static void ssl_check_for_safari(SSL *s, const unsigned char *data, const unsign
 	if (type != TLSEXT_TYPE_server_name)
 		return;
 
-	if (data+size > d+n)
+	if ((d+n)-data < size)
 		return;
 	data += size;
 
@@ -406,7 +406,7 @@ static void ssl_check_for_safari(SSL *s, const unsigned char *data, const unsign
 		const size_t len1 = sizeof(kSafariExtensionsBlock);
 		const size_t len2 = sizeof(kSafariTLS12ExtensionsBlock);
 
-		if (data + len1 + len2 != d+n)
+		if ((d+n)-data  != (int)(len1 + len2))
 			return;
 		if (memcmp(data, kSafariExtensionsBlock, len1) != 0)
 			return;
@@ -417,7 +417,7 @@ static void ssl_check_for_safari(SSL *s, const unsigned char *data, const unsign
 		{
 		const size_t len = sizeof(kSafariExtensionsBlock);
 
-		if (data + len != d+n)
+		if ((d+n)-data != (int)(len))
 			return;
 		if (memcmp(data, kSafariExtensionsBlock, len) != 0)
 			return;
@@ -443,20 +443,20 @@ int ssl_parse_clienthello_tlsext(SSL *s, unsigned char **p, unsigned char *d, in
 		ssl_check_for_safari(s, data, d, n);
 #endif /* !OPENSSL_NO_EC */
 
-	if (data >= (d+n-2))
+	if ((d+n)-data <= 2)
 		goto ri_check;
 
 	n2s(data,len);
 
-	if (data > (d+n-len)) 
+	if ((d+n)-data < len)
 		goto ri_check;
 
-	while (data <= (d+n-4))
+	while ((d+n)-data >= 4)
 		{
 		n2s(data,type);
 		n2s(data,size);
 
-		if (data+size > (d+n))
+		if ((d+n)-data < size)
 	   		goto ri_check;
 
 		if (s->tlsext_debug_cb)
@@ -598,6 +598,23 @@ int ssl_parse_clienthello_tlsext(SSL *s, unsigned char **p, unsigned char *d, in
 					*al = SSL_AD_DECODE_ERROR;
 					return 0;
 					}
+
+                /*
+                 * We remove any OCSP_RESPIDs from a previous handshake
+                 * to prevent unbounded memory growth - CVE-2016-6304
+                 */
+                sk_OCSP_RESPID_pop_free(s->tlsext_ocsp_ids,
+                                        OCSP_RESPID_free);
+                if (dsize > 0) {
+                    s->tlsext_ocsp_ids = sk_OCSP_RESPID_new_null();
+                    if (s->tlsext_ocsp_ids == NULL) {
+                        *al = SSL_AD_INTERNAL_ERROR;
+                        return 0;
+                    }
+                } else {
+                    s->tlsext_ocsp_ids = NULL;
+                }
+
 				while (dsize > 0)
 					{
 					OCSP_RESPID *id;
@@ -628,14 +645,6 @@ int ssl_parse_clienthello_tlsext(SSL *s, unsigned char **p, unsigned char *d, in
 						{
 						OCSP_RESPID_free(id);
 						*al = SSL_AD_DECODE_ERROR;
-						return 0;
-						}
-					if (!s->tlsext_ocsp_ids
-						&& !(s->tlsext_ocsp_ids =
-						sk_OCSP_RESPID_new_null()))
-						{
-						OCSP_RESPID_free(id);
-						*al = SSL_AD_INTERNAL_ERROR;
 						return 0;
 						}
 					if (!sk_OCSP_RESPID_push(
@@ -718,22 +727,22 @@ int ssl_parse_serverhello_tlsext(SSL *s, unsigned char **p, unsigned char *d, in
 	int tlsext_servername = 0;
 	int renegotiate_seen = 0;
 
-	if (data >= (d+n-2))
+	if ((d+n)-data <= 2)
 		goto ri_check;
 
 	n2s(data,length);
-	if (data+length != d+n)
+	if ((d+n)-data != length)
 		{
 		*al = SSL_AD_DECODE_ERROR;
 		return 0;
 		}
 
-	while(data <= (d+n-4))
+	while((d+n)-data >= 4)
 		{
 		n2s(data,type);
 		n2s(data,size);
 
-		if (data+size > (d+n))
+		if ((d+n)-data < size)
 	   		goto ri_check;
 
 		if (s->tlsext_debug_cb)
@@ -1008,30 +1017,30 @@ int tls1_process_ticket(SSL *s, unsigned char *session_id, int len,
 	if (s->version == DTLS1_VERSION || s->version == DTLS1_BAD_VER)
 		{
 		i = *(p++);
-		p+= i;
-		if (p >= limit)
+        if (limit - p <= i)
 			return -1;
+        p+= i;
 		}
 	/* Skip past cipher list */
 	n2s(p, i);
-	p+= i;
-	if (p >= limit)
+    if (limit - p <= i)
 		return -1;
+    p+= i;
 	/* Skip past compression algorithm list */
 	i = *(p++);
-	p += i;
-	if (p > limit)
+    if (limit - p < i)
 		return -1;
+    p += i;
 	/* Now at start of extensions */
-	if ((p + 2) >= limit)
+	if (limit - p <= 2)
 		return 1;
 	n2s(p, i);
-	while ((p + 4) <= limit)
+	while (limit - p >= 4)
 		{
 		unsigned short type, size;
 		n2s(p, type);
 		n2s(p, size);
-		if (p + size > limit)
+		if (limit - p < size)
 			return 1;
 		if (type == TLSEXT_TYPE_session_ticket)
 			{
@@ -1063,9 +1072,6 @@ static int tls_decrypt_ticket(SSL *s, const unsigned char *etick, int eticklen,
 	HMAC_CTX hctx;
 	EVP_CIPHER_CTX ctx;
 	SSL_CTX *tctx = s->initial_ctx;
-	/* Need at least keyname + iv + some encrypted data */
-	if (eticklen < 48)
-		goto tickerr;
 	/* Initialize session ticket encryption and HMAC contexts */
 	HMAC_CTX_init(&hctx);
 	EVP_CIPHER_CTX_init(&ctx);
@@ -1095,6 +1101,13 @@ static int tls_decrypt_ticket(SSL *s, const unsigned char *etick, int eticklen,
  	 * integrity checks on ticket.
  	 */
 	mlen = HMAC_size(&hctx);
+    /* Sanity check ticket length: must exceed keyname + IV + HMAC */
+    if (eticklen <= 16 + EVP_CIPHER_CTX_iv_length(&ctx) + mlen) {
+        HMAC_CTX_cleanup(&hctx);
+        EVP_CIPHER_CTX_cleanup(&ctx);
+        goto tickerr;
+    }
+
 	eticklen -= mlen;
 	/* Check HMAC of encrypted ticket */
 	HMAC_Update(&hctx, etick, eticklen);
